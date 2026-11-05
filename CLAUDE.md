@@ -5,9 +5,9 @@ user funds or private keys — the backend plans, reminds and keeps records;
 licensed partners custody money.
 
 This repo is one of three:
-- [billsteady-web](https://github.com/bytescape30/billsteady-web): the planner PWA
+- [billsteady-web](https://github.com/BillSteady/billsteady-web): the planner PWA
 - **billsteady-backend** (this repo): Supabase (Postgres, Auth, Edge Functions)
-- [billsteady-contracts](https://github.com/bytescape30/billsteady-contracts): the Soroban jar contract (Rust)
+- [billsteady-contracts](https://github.com/BillSteady/billsteady-contracts): the Soroban jar contract (Rust)
 
 ## Stack
 - Supabase: Postgres, Auth, Edge Functions (TypeScript), pg_cron

@@ -1,7 +1,7 @@
 # BillSteady Backend
 
 Supabase backend (Postgres, Auth, Edge Functions) for
-[BillSteady](https://github.com/bytescape30/billsteady-web): a bill planner
+[BillSteady](https://github.com/BillSteady/billsteady-web): a bill planner
 for people short on cash in Nigeria (then Kenya, Ghana).
 
 ## Status: Phase 0.4 + Phase 1 (SMS half) written, not yet verified against a real Supabase project
@@ -103,13 +103,13 @@ Still blocked on external accounts:
   — deliberately out of scope for this slice; users with
   `notify_channel = 'whatsapp'` get no reminders yet, by design
 
-See [the roadmap](https://github.com/bytescape30/billsteady-web/blob/main/docs/ROADMAP.md)
+See [the roadmap](https://github.com/BillSteady/billsteady-web/blob/main/docs/ROADMAP.md)
 for the full build plan.
 
 ## Related repos
 
-- [billsteady-web](https://github.com/bytescape30/billsteady-web) — the planner PWA
-- [billsteady-contracts](https://github.com/bytescape30/billsteady-contracts) — the Soroban jar smart contract
+- [billsteady-web](https://github.com/BillSteady/billsteady-web) — the planner PWA
+- [billsteady-contracts](https://github.com/BillSteady/billsteady-contracts) — the Soroban jar smart contract
 
 ## License
 
