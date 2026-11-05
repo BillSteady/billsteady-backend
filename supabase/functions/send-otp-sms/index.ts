@@ -6,7 +6,7 @@
 // behalf. Shape and the standardwebhooks usage are taken directly from
 // Supabase's own documented example for this hook.
 import { Webhook } from "https://esm.sh/standardwebhooks@1.0.0";
-import { createTermiiClient, type TermiiClient } from "./termii.ts";
+import { createTermiiClient, type TermiiClient } from "../_shared/termii.ts";
 
 interface SendSmsHookPayload {
   user: { phone: string };

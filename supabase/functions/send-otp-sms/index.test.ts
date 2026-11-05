@@ -1,7 +1,7 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { Webhook } from "https://esm.sh/standardwebhooks@1.0.0";
 import { handleRequest, type Env } from "./index.ts";
-import type { TermiiClient, TermiiSendResult } from "./termii.ts";
+import type { TermiiClient, TermiiSendResult } from "../_shared/termii.ts";
 
 const RAW_SECRET = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw"; // test-only, not a real secret
 const ENV: Env = {

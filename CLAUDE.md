@@ -28,7 +28,12 @@ This repo is one of three:
 - Plan first, write a failing test, implement, run checks, show output, commit.
 
 ## Current phase
-Phase 0.4 written (0001_core.sql, RLS, send-otp-sms hook), verified against
-a throwaway native Postgres cluster (no Docker on this machine), not yet
-against a real `supabase start` or hosted project. Blocked on: a Supabase
-project, a Termii account + API key.
+Phase 0.4 (0001_core.sql, RLS, send-otp-sms hook) and Phase 1's SMS half
+(0002_reminders.sql, reminders + sms-opt-out functions) are written and
+logic-tested (40 Deno tests total), verified against a throwaway native
+Postgres cluster where possible (no Docker on this machine). pg_cron/pg_net
+and the real Supabase-backed DB access layer for reminders/sms-opt-out are
+NOT verified - see README.md for exactly what is and isn't proven. Prompt
+1.2 (WhatsApp reminders) is deliberately deferred, not forgotten - needs
+WhatsApp Business Cloud API approval this project doesn't have.
+Blocked on: a Supabase project, a Termii account + API key + webhook secret.
