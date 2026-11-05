@@ -28,4 +28,7 @@ This repo is one of three:
 - Plan first, write a failing test, implement, run checks, show output, commit.
 
 ## Current phase
-Not started. Blocked on: a Supabase project, a Termii account + API key.
+Phase 0.4 written (0001_core.sql, RLS, send-otp-sms hook), verified against
+a throwaway native Postgres cluster (no Docker on this machine), not yet
+against a real `supabase start` or hosted project. Blocked on: a Supabase
+project, a Termii account + API key.
