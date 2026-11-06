@@ -28,12 +28,16 @@ This repo is one of three:
 - Plan first, write a failing test, implement, run checks, show output, commit.
 
 ## Current phase
-Phase 0.4 (0001_core.sql, RLS, send-otp-sms hook) and Phase 1's SMS half
-(0002_reminders.sql, reminders + sms-opt-out functions) are written and
-logic-tested (40 Deno tests total), verified against a throwaway native
-Postgres cluster where possible (no Docker on this machine). pg_cron/pg_net
-and the real Supabase-backed DB access layer for reminders/sms-opt-out are
-NOT verified - see README.md for exactly what is and isn't proven. Prompt
-1.2 (WhatsApp reminders) is deliberately deferred, not forgotten - needs
-WhatsApp Business Cloud API approval this project doesn't have.
+Phase 0.4 (0001_core.sql, RLS, send-otp-sms hook), Phase 1's SMS half
+(0002_reminders.sql, reminders + sms-opt-out functions), and Phase 2.1
+(0003_payment_orders.sql + the payment-order state machine) are written
+and logic-tested (53 Deno tests total), verified against a throwaway native
+Postgres cluster where possible (no Docker on this machine) - all three
+migrations and both RLS test files run together in one pass, not each in
+isolation. pg_cron/pg_net and the real Supabase-backed DB access layer for
+reminders/sms-opt-out/payment-orders are NOT verified - see README.md for
+exactly what is and isn't proven. Prompt 1.2 (WhatsApp reminders) and
+Prompt 2.2 (VTpass integration) are deliberately deferred, not forgotten -
+the former needs WhatsApp Business Cloud API approval, the latter a VTpass
+sandbox account, neither of which this project has.
 Blocked on: a Supabase project, a Termii account + API key + webhook secret.

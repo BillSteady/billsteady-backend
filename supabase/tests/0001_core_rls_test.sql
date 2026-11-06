@@ -114,9 +114,12 @@ end $$;
 reset role;
 
 -- --- reminders: readable via bill ownership, not writable by users -----
+-- kind/for_date became NOT NULL in 0002_reminders.sql; this insert predates
+-- that migration and needs them too, or it fails against the current
+-- schema even though this file's own logic is still correct.
 set role service_role;
-insert into public.reminders (bill_id, send_at, channel)
-values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', now() + interval '3 days', 'sms');
+insert into public.reminders (bill_id, send_at, channel, kind, for_date)
+values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', now() + interval '3 days', 'sms', 'due_3d', current_date + 3);
 reset role;
 
 set role authenticated;

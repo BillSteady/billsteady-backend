@@ -4,7 +4,7 @@ Supabase backend (Postgres, Auth, Edge Functions) for
 [BillSteady](https://github.com/BillSteady/billsteady-web): a bill planner
 for people short on cash in Nigeria (then Kenya, Ghana).
 
-## Status: Phase 0.4 + Phase 1 (SMS half) written, not yet verified against a real Supabase project
+## Status: Phase 0.4 + Phase 1 (SMS half) + Phase 2.1 written, not yet verified against a real Supabase project
 
 What exists and is actually proven:
 
@@ -60,6 +60,26 @@ What exists and is actually proven:
   "your secret key" without saying which dashboard value that is), and this
   has never seen a real signed request from Termii. 16 tests, including
   real HMAC-SHA512 computation (not mocked crypto) for the signature checks.
+- `supabase/migrations/0003_payment_orders.sql` — the `payment_orders`
+  table (Prompt 2.1): `user_id`/`bill_id` foreign keys, a nullable `jar_id`
+  with no FK yet (v2/Phase 3 - no `jars` table exists to reference), a real
+  UNIQUE constraint on `idempotency_key` (not an application-level check),
+  and a `clock_timestamp()`-based trigger that keeps `updated_at` honest
+  (deliberately not `now()` - see the migration's comment: `now()` is
+  frozen for the whole transaction it runs in, which made the first version
+  of this trigger's own test fail even though the trigger was correct in
+  normal, one-UPDATE-per-transaction production use). Same trust model as
+  `reminders`: a user can read their own orders; only `service_role` (the
+  not-yet-built Prompt 2.2 Edge Function) can create or transition one.
+- `supabase/functions/_shared/payment-order-state-machine.ts` — the pure
+  state machine (`quote → funded → paying → paid|failed`,
+  `failed → refunded`), 13 tests, written before the implementation existed
+  (confirmed failing on a missing-module error first). Returns a typed
+  rejection for an illegal transition rather than throwing - an illegal
+  transition is an expected, recoverable outcome (a retried webhook, two
+  workers racing the same order), not a bug to crash on. `paid → refunded`
+  is deliberately not modeled: the PRD's Prompt 2.1 only names the five
+  transitions above, so a post-payment refund path isn't invented here.
 - **Deliberately not written**: the real Supabase-backed data-access layer
   for `reminders` and `sms-opt-out` (the part that actually queries/writes
   Postgres via `@supabase/supabase-js`). Both functions are structured with
@@ -72,24 +92,44 @@ What exists and is actually proven:
 
 **What was and wasn't verified, precisely:** Docker is not installed on the
 machine this was built on, so `supabase start` (the normal way to run RLS
-tests against a real local Postgres) doesn't work here. Instead, both
-migrations and the RLS test were run for real against a throwaway native
-PostgreSQL 15 cluster with a minimal hand-written stand-in for what
-Supabase itself provides (`auth.users`, `auth.uid()`, and the
-anon/authenticated/service_role roles with matching grants) — not a mock,
-an actual Postgres instance enforcing RLS and the schema's check
-constraints and unique indexes (including the reminders dedupe index,
-confirmed to actually reject a duplicate `(bill_id, kind, for_date)` via
-`ON CONFLICT ... DO NOTHING`). The `pg_cron`/`pg_net` extensions and the
-`cron.schedule(...)` job itself could **not** be verified this way — they
-aren't available as installable extensions on a plain local Postgres, only
-on Supabase's managed platform — so that part of `0002_reminders.sql` is
-unverified SQL, written to match Supabase's documented pattern as closely
-as this session could confirm without a live project. All of this is
-strong evidence the schema and logic are correct, but it is **not** a
-substitute for running against the real `supabase start` stack (or a real
-hosted project) before trusting it with real user data or a real cron
-schedule — do that before this ships.
+tests against a real local Postgres) doesn't work here. Instead, all three
+migrations and both RLS test files (`0001_core_rls_test.sql`,
+`0003_payment_orders_test.sql`) were run together, in sequence, for real,
+against a throwaway native PostgreSQL 15 cluster with a minimal
+hand-written stand-in for what Supabase itself provides (`auth.users`,
+`auth.uid()`, and the anon/authenticated/service_role roles with matching
+grants) — not a mock, an actual Postgres instance enforcing RLS and the
+schema's check constraints and unique indexes (including the reminders
+dedupe index, confirmed to actually reject a duplicate
+`(bill_id, kind, for_date)` via `ON CONFLICT ... DO NOTHING`, and
+`payment_orders.idempotency_key`'s UNIQUE constraint, confirmed to reject a
+real duplicate insert with a real `unique_violation`, not just assumed from
+the DDL). Running the full migration sequence together (rather than each
+migration verified in isolation, as before) caught a real gap:
+`0001_core_rls_test.sql`'s own reminders insert predated `0002`'s new
+`NOT NULL` columns and started failing the moment all three migrations
+applied together - fixed in that test file, which is why this now matters:
+**verify the whole stack together going forward, not each migration in
+isolation**, or gaps like this won't surface. Building `0003`'s test also
+caught a real misunderstanding on this session's part about Postgres RLS:
+an `UPDATE` with no applicable policy doesn't raise an exception the way an
+`INSERT` does - it silently matches zero rows - so the first version of the
+"users can't self-mark an order paid" assertion would have passed even if
+that protection had been broken, because it was waiting for an exception
+that Postgres was never going to raise. Fixed to check the row's actual
+state instead, matching the pattern `0001`'s own cross-user `bills` update
+test already used correctly.
+
+The `pg_cron`/`pg_net` extensions and the `cron.schedule(...)` job itself
+still could **not** be verified this way — they aren't available as
+installable extensions on a plain local Postgres, only on Supabase's
+managed platform — so that part of `0002_reminders.sql` is unverified SQL,
+written to match Supabase's documented pattern as closely as this session
+could confirm without a live project. All of this is strong evidence the
+schema and logic are correct, but it is **not** a substitute for running
+against the real `supabase start` stack (or a real hosted project) before
+trusting it with real user data or a real cron schedule — do that before
+this ships.
 
 Still blocked on external accounts:
 - a Supabase project (to actually deploy this, and to confirm `pg_cron`/
