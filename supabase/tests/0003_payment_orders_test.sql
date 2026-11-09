@@ -1,60 +1,66 @@
--- RLS + constraint test for 0003_payment_orders.sql.
---
--- Same harness as 0001_core_rls_test.sql: requires a Postgres with
--- 0001/0002/0003 applied plus the stub `auth` schema/roles Supabase itself
--- provides in production (see the dev note at the bottom of
--- 0001_core_rls_test.sql for exactly how this was run without Docker).
--- Run with `psql -v ON_ERROR_STOP=1 -f this_file.sql`; a RAISE EXCEPTION
--- means a real failure.
+-- RLS + constraint test for payment_orders, updated for the schema as it
+-- exists after 0004_pivot.sql (saved_billers instead of bills, biller_id
+-- instead of bill_id, and the new stellar_address/asset_code/order_ref
+-- columns are NOT NULL). Run after 0001-0004 are all applied, same stub
+-- auth harness as the other test files - see _stub_auth_schema.sql.
 --
 -- It asserts:
 --   1. a user can read only their own payment_orders, not another user's,
 --      even by id
 --   2. an ordinary user cannot INSERT a payment_order directly (only
---      service_role, i.e. the not-yet-built Edge Function, can)
+--      service_role can)
 --   3. an ordinary user cannot UPDATE a payment_order's status directly
 --      (e.g. can't self-mark an order 'paid')
---   4. idempotency_key is actually enforced unique at the database level -
---      a second insert with the same key fails, it doesn't silently
---      create a duplicate order
---   5. updated_at is bumped automatically on UPDATE (the reconciliation
---      job, tracked separately, depends on this being real)
+--   4. idempotency_key is enforced unique at the database level
+--   5. order_ref is enforced unique and exactly 32 bytes at the database
+--      level - this is the value the on-chain BillPaymentRouter.pay() call
+--      must match byte-for-byte, so both constraints matter for real
+--   6. updated_at is bumped automatically on UPDATE
 
 begin;
 
-insert into auth.users (id, phone) values
-  ('33333333-3333-3333-3333-333333333333', '+2348000000003'),
-  ('44444444-4444-4444-4444-444444444444', '+2348000000004');
+insert into public.users (id, stellar_address) values
+  ('33333333-3333-3333-3333-333333333333', 'GUSER0000000000000000000000000000000000000000000000000C'),
+  ('44444444-4444-4444-4444-444444444444', 'GUSER0000000000000000000000000000000000000000000000000D');
 
 set role authenticated;
 set local request.jwt.claim.sub = '33333333-3333-3333-3333-333333333333';
-insert into public.bills (id, user_id, name, amount_kobo, due_day)
-values ('cccccccc-cccc-cccc-cccc-cccccccccccc', '33333333-3333-3333-3333-333333333333', 'Electricity', 500000, 10);
+insert into public.saved_billers (id, user_id, name)
+values ('cccccccc-cccc-cccc-cccc-cccccccccccc', '33333333-3333-3333-3333-333333333333', 'Ikeja Electric');
 reset role;
 
 set role authenticated;
 set local request.jwt.claim.sub = '44444444-4444-4444-4444-444444444444';
-insert into public.bills (id, user_id, name, amount_kobo, due_day)
-values ('dddddddd-dddd-dddd-dddd-dddddddddddd', '44444444-4444-4444-4444-444444444444', 'Airtime', 100000, 20);
+insert into public.saved_billers (id, user_id, name)
+values ('dddddddd-dddd-dddd-dddd-dddddddddddd', '44444444-4444-4444-4444-444444444444', 'MTN Airtime');
 reset role;
 
--- --- Only service_role (the future Edge Function) creates orders --------
+-- --- Only service_role (sep10-auth's downstream payment function) creates orders ---
+-- order_ref uses repeat('aa', 32) rather than a hand-counted hex literal,
+-- specifically to avoid an off-by-one in the fixture itself (32 bytes =
+-- exactly BytesN<32> on-chain - see 0004_pivot.sql's column comment).
 set role service_role;
-insert into public.payment_orders (user_id, bill_id, amount_kobo, provider, idempotency_key)
+insert into public.payment_orders (user_id, biller_id, amount_kobo, provider, idempotency_key, stellar_address, asset_code, order_ref)
 values (
   '33333333-3333-3333-3333-333333333333',
   'cccccccc-cccc-cccc-cccc-cccccccccccc',
-  500000,
+  1850000,
   'vtpass',
-  'order-A-001'
+  'order-A-001',
+  'GUSER0000000000000000000000000000000000000000000000000C',
+  'USDC',
+  decode(repeat('aa', 32), 'hex')
 );
-insert into public.payment_orders (user_id, bill_id, amount_kobo, provider, idempotency_key)
+insert into public.payment_orders (user_id, biller_id, amount_kobo, provider, idempotency_key, stellar_address, asset_code, order_ref)
 values (
   '44444444-4444-4444-4444-444444444444',
   'dddddddd-dddd-dddd-dddd-dddddddddddd',
-  100000,
+  500000,
   'vtpass',
-  'order-B-001'
+  'order-B-001',
+  'GUSER0000000000000000000000000000000000000000000000000D',
+  'XLM',
+  decode(repeat('bb', 32), 'hex')
 );
 reset role;
 
@@ -76,8 +82,11 @@ end $$;
 do $$
 begin
   begin
-    insert into public.payment_orders (user_id, bill_id, amount_kobo, provider, idempotency_key)
-    values ('33333333-3333-3333-3333-333333333333', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 1, 'vtpass', 'forged-order');
+    insert into public.payment_orders (user_id, biller_id, amount_kobo, provider, idempotency_key, stellar_address, asset_code, order_ref)
+    values (
+      '33333333-3333-3333-3333-333333333333', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 1, 'vtpass',
+      'forged-order', 'GUSER0000000000000000000000000000000000000000000000000C', 'USDC', decode(repeat('cc', 32), 'hex')
+    );
     raise exception 'ordinary users must not be able to insert payment_orders directly';
   exception
     when insufficient_privilege then
@@ -86,15 +95,9 @@ begin
 end $$;
 
 -- --- 3. no client-side status update -------------------------------------
--- Unlike INSERT (which raises a row-level-security violation exception for
--- a disallowed row), UPDATE with zero applicable policy doesn't raise -
--- Postgres just filters the USING predicate to "no rows match", so the
--- UPDATE silently affects 0 rows (same behavior 0001_core_rls_test.sql
--- already demonstrates for a cross-user `bills` update). Assert on the
--- actual row being unchanged, not on an exception that was never going to
--- be raised - an earlier version of this test wrongly expected one and
--- would have passed even if the UPDATE had silently succeeded, which
--- defeats the point of the assertion.
+-- UPDATE with zero applicable policy filters to "no rows match" rather than
+-- raising - assert on the row's actual state, not an exception that was
+-- never going to be raised (see 0001_core_rls_test.sql for the same point).
 update public.payment_orders set status = 'paid' where idempotency_key = 'order-A-001';
 do $$
 begin
@@ -109,13 +112,11 @@ set role service_role;
 do $$
 begin
   begin
-    insert into public.payment_orders (user_id, bill_id, amount_kobo, provider, idempotency_key)
+    insert into public.payment_orders (user_id, biller_id, amount_kobo, provider, idempotency_key, stellar_address, asset_code, order_ref)
     values (
-      '33333333-3333-3333-3333-333333333333',
-      'cccccccc-cccc-cccc-cccc-cccccccccccc',
-      999,
-      'vtpass',
-      'order-A-001' -- same key as the first insert above
+      '33333333-3333-3333-3333-333333333333', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 999, 'vtpass',
+      'order-A-001', -- same key as the first insert above
+      'GUSER0000000000000000000000000000000000000000000000000C', 'USDC', decode(repeat('dd', 32), 'hex')
     );
     raise exception 'a duplicate idempotency_key must be rejected by a UNIQUE constraint, not silently inserted';
   exception
@@ -124,15 +125,43 @@ begin
   end;
 end $$;
 
+-- --- 5a. order_ref is enforced unique -------------------------------------
 do $$
-declare
-  n int;
 begin
-  select count(*) into n from public.payment_orders where idempotency_key = 'order-A-001';
-  if n <> 1 then raise exception 'expected exactly 1 row with idempotency_key order-A-001 after the rejected duplicate, saw %', n; end if;
+  begin
+    insert into public.payment_orders (user_id, biller_id, amount_kobo, provider, idempotency_key, stellar_address, asset_code, order_ref)
+    values (
+      '33333333-3333-3333-3333-333333333333', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 999, 'vtpass',
+      'order-A-002',
+      'GUSER0000000000000000000000000000000000000000000000000C', 'USDC',
+      decode(repeat('aa', 32), 'hex') -- same order_ref as order-A-001
+    );
+    raise exception 'a duplicate order_ref must be rejected by a UNIQUE constraint - two orders could otherwise claim the same on-chain payment';
+  exception
+    when unique_violation then
+      null; -- expected
+  end;
 end $$;
 
--- --- 5. updated_at is bumped automatically on UPDATE ---------------------
+-- --- 5b. order_ref must be exactly 32 bytes -------------------------------
+do $$
+begin
+  begin
+    insert into public.payment_orders (user_id, biller_id, amount_kobo, provider, idempotency_key, stellar_address, asset_code, order_ref)
+    values (
+      '33333333-3333-3333-3333-333333333333', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 999, 'vtpass',
+      'order-A-003',
+      'GUSER0000000000000000000000000000000000000000000000000C', 'USDC',
+      decode(repeat('ee', 16), 'hex') -- 16 bytes, not 32 - must match BytesN<32> on-chain
+    );
+    raise exception 'order_ref must be rejected when it is not exactly 32 bytes';
+  exception
+    when check_violation then
+      null; -- expected
+  end;
+end $$;
+
+-- --- 6. updated_at is bumped automatically on UPDATE ---------------------
 do $$
 declare
   before_ts timestamptz;
@@ -150,4 +179,4 @@ reset role;
 
 rollback; -- leave no trace; this file only asserts, it doesn't seed data
 
-\echo 'ALL PAYMENT_ORDERS ASSERTIONS PASSED'
+\echo '0003/0004 PAYMENT_ORDERS ASSERTIONS PASSED'

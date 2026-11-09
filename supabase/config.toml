@@ -289,29 +289,15 @@ max_frequency = "5s"
 # enabled = true
 # uri = "pg-functions://<database>/<schema>/<hook_name>"
 
-# Configure one of the supported SMS providers: `twilio`, `twilio_verify`, `messagebird`, `textlocal`, `vonage`.
-# Termii (our provider) is not one of these, so we don't use this block - see
-# [auth.hook.send_sms] below, which replaces the built-in provider entirely.
-[auth.sms.twilio]
-enabled = false
-account_sid = ""
-message_service_sid = ""
-# DO NOT commit your Twilio auth token to git. Use environment variable substitution instead:
-auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
-
-# Termii isn't a built-in Supabase SMS provider, so OTP delivery runs through this hook
-# instead of [auth.sms.*]: Supabase Auth POSTs the phone + code here, and
-# supabase/functions/send-otp-sms calls Termii's API to actually send it.
-[auth.hook.send_sms]
-enabled = true
-# Local dev target: the Edge Function running under `supabase functions serve`
-# (not reachable without Docker on this machine - see supabase/functions/send-otp-sms/README.md).
-# In production this points at the deployed function's HTTPS URL instead.
-uri = "http://127.0.0.1:54321/functions/v1/send-otp-sms"
-# Supabase signs the webhook payload with this symmetric key (format: v1,whsec_<base64>)
-# so the function can verify the call really came from Supabase Auth. Generate with
-# `openssl rand -base64 32`, prefix `v1,whsec_`, and set it as a secret - never commit it.
-secrets = "env(SUPABASE_AUTH_SEND_SMS_HOOK_SECRET)"
+# Phone-OTP login (Twilio/Termii/etc) is gone as of the pivot (2026-11-08):
+# login is now SEP-10 Stellar Web Auth (supabase/functions/sep10-auth), which
+# is a self-issued JWT flow sitting entirely outside Supabase Auth/GoTrue -
+# see supabase/functions/_shared/supabase-jwt.ts's header comment for why.
+# [auth.sms.twilio] and [auth.hook.send_sms] (the Termii OTP hook) are
+# removed rather than left disabled-but-configured, since nothing in this
+# schema references phone-based login anymore. An optional SMS payment
+# receipt (not phone-OTP login) is a plausible future feature but isn't
+# built - see README.md.
 
 # Multi-factor-authentication is available to Supabase Pro plan.
 [auth.mfa]
