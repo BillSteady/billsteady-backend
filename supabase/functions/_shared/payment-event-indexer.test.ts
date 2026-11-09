@@ -5,12 +5,12 @@ function validOrderRef(): Uint8Array {
   return crypto.getRandomValues(new Uint8Array(32));
 }
 
-Deno.test("parseBillPaidEvent: parses a well-formed bill_paid event", () => {
+Deno.test("parseBillPaidEvent: parses a well-formed bill_paid event (payer/biller_id in topics, matching the real deployed contract)", () => {
   const orderRef = validOrderRef();
   const event: RpcEventLike = {
     type: "contract",
-    topic: ["bill_paid"],
-    value: ["GABCDEXAMPLE", "ikeja-electric", orderRef, 1850000000n],
+    topic: ["bill_paid", "GABCDEXAMPLE", "ikeja-electric"],
+    value: [orderRef, 1850000000n],
   };
 
   const parsed = parseBillPaidEvent(event);
@@ -21,15 +21,30 @@ Deno.test("parseBillPaidEvent: parses a well-formed bill_paid event", () => {
 });
 
 Deno.test("parseBillPaidEvent: rejects a non-contract event", () => {
-  const event: RpcEventLike = { type: "system", topic: ["bill_paid"], value: [] };
+  const event: RpcEventLike = {
+    type: "system",
+    topic: ["bill_paid", "G...", "x"],
+    value: [validOrderRef(), 1n],
+  };
   assertEquals(parseBillPaidEvent(event), null);
 });
 
-Deno.test("parseBillPaidEvent: rejects an event with the wrong topic", () => {
+Deno.test("parseBillPaidEvent: rejects an event with the wrong name topic", () => {
   const event: RpcEventLike = {
     type: "contract",
-    topic: ["something_else"],
-    value: ["G...", "x", validOrderRef(), 1n],
+    topic: ["something_else", "G...", "x"],
+    value: [validOrderRef(), 1n],
+  };
+  assertEquals(parseBillPaidEvent(event), null);
+});
+
+Deno.test("parseBillPaidEvent: rejects a topic array of the wrong length (the original bug this guards against)", () => {
+  // The contract's real event has 3 topics (name, payer, biller_id), not 1.
+  // A parser expecting only ["bill_paid"] would reject every real event.
+  const event: RpcEventLike = {
+    type: "contract",
+    topic: ["bill_paid"],
+    value: [validOrderRef(), 1n],
   };
   assertEquals(parseBillPaidEvent(event), null);
 });
@@ -37,8 +52,8 @@ Deno.test("parseBillPaidEvent: rejects an event with the wrong topic", () => {
 Deno.test("parseBillPaidEvent: rejects a malformed order_ref (not 32 bytes)", () => {
   const event: RpcEventLike = {
     type: "contract",
-    topic: ["bill_paid"],
-    value: ["G...", "x", new Uint8Array(16), 1n],
+    topic: ["bill_paid", "G...", "x"],
+    value: [new Uint8Array(16), 1n],
   };
   assertEquals(parseBillPaidEvent(event), null);
 });
@@ -46,8 +61,8 @@ Deno.test("parseBillPaidEvent: rejects a malformed order_ref (not 32 bytes)", ()
 Deno.test("parseBillPaidEvent: rejects a zero/negative amount", () => {
   const event: RpcEventLike = {
     type: "contract",
-    topic: ["bill_paid"],
-    value: ["G...", "x", validOrderRef(), 0n],
+    topic: ["bill_paid", "G...", "x"],
+    value: [validOrderRef(), 0n],
   };
   assertEquals(parseBillPaidEvent(event), null);
 });

@@ -1,15 +1,19 @@
 // Parses a BillPaymentRouter `pay()` success event from Stellar RPC's
 // getEvents response shape.
 //
-// PROVISIONAL: billsteady-contracts' router/ contract is being built in a
-// parallel session and its README (the source of truth for the exact event
-// shape) didn't exist yet when this was written. This implements the shape
-// specified in the coordinating session's own directive to that contracts
-// session: topic `("bill_paid",)`, data `(payer, biller_id, order_ref,
-// amount)`. Deliberately isolated in this one small function, exactly so
-// it's a one-file fix: once billsteady-contracts/router/README.md exists,
-// diff its real event shape against this function and fix on sight if it
-// differs - don't trust this comment over that README.
+// Corrected against the real deployed contract, not the coordinating
+// session's original (wrong) directive this was first written against.
+// `stellar contract info interface` on the live testnet deployment
+// (CA5VHLWTG7UXT6MKYWRMAVXSQ3J4SQFBG2RQVBYUKBAPHUTO7XEPQMOA) shows `payer`
+// and `biller_id` are `#[topic]` fields, not data fields - soroban-sdk's
+// `#[contractevent]` macro puts the event name plus every `#[topic]` field
+// into topics, in declaration order, and everything else into data. So the
+// real shape is topic = ["bill_paid", payer, biller_id] (3 elements, not
+// 1), data = (order_ref, amount) (2 elements, not 4). The original
+// 1-topic/4-data assumption would have silently rejected every real event
+// forever - caught by independently re-verifying the deployed interface
+// rather than trusting the directive that was correct about everything
+// else in this contract.
 export interface BillPaidEvent {
   payer: string; // G... address
   billerId: string;
@@ -21,21 +25,22 @@ export interface BillPaidEvent {
  * the fields this parser actually reads, not the full RPC type. */
 export interface RpcEventLike {
   type: string;
-  topic: unknown[]; // decoded ScVal-native topic segments
-  value: unknown; // decoded ScVal-native event data
+  topic: unknown[]; // decoded ScVal-native topic segments: [name, payer, biller_id]
+  value: unknown; // decoded ScVal-native event data: [order_ref, amount]
 }
 
 export function parseBillPaidEvent(event: RpcEventLike): BillPaidEvent | null {
   if (event.type !== "contract") return null;
-  if (!Array.isArray(event.topic) || event.topic.length !== 1) return null;
-  if (event.topic[0] !== "bill_paid") return null;
-
-  const data = event.value;
-  if (!Array.isArray(data) || data.length !== 4) return null;
-  const [payer, billerId, orderRef, amount] = data;
-
+  if (!Array.isArray(event.topic) || event.topic.length !== 3) return null;
+  const [eventName, payer, billerId] = event.topic;
+  if (eventName !== "bill_paid") return null;
   if (typeof payer !== "string" || !payer.startsWith("G")) return null;
   if (typeof billerId !== "string") return null;
+
+  const data = event.value;
+  if (!Array.isArray(data) || data.length !== 2) return null;
+  const [orderRef, amount] = data;
+
   if (!(orderRef instanceof Uint8Array) || orderRef.length !== 32) return null;
   if (typeof amount !== "bigint" && typeof amount !== "number" && typeof amount !== "string") return null;
 
